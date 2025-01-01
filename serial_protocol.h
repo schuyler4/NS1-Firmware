@@ -16,5 +16,7 @@
 #define FALLING_EDGE_TRIGGER_COMMAND '\\'
 #define SET_CAL 'C'
 #define READ_CAL 'k'
+#define AMPLIFIER_GAIN 'A'
+#define AMPLIFIER_UNITY 'a'
 
 #endif

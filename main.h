@@ -12,6 +12,7 @@
 #define CLOCK_PIN 21
 #define PS_SET_PIN 23
 #define RANGE_PIN 27 
+#define GAIN_PIN 28
 
 #define TRIGGER_PIN 8
 

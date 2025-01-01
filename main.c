@@ -90,6 +90,12 @@ int main(void)
             case LOW_RANGE_COMMAND:
                 gpio_put(RANGE_PIN, 1);
                 break;
+            case AMPLIFIER_GAIN:
+                gpio_put(GAIN_PIN, 1);
+                break;
+            case AMPLIFIER_UNITY:
+                gpio_put(GAIN_PIN, 0);
+                break;
             case RISING_EDGE_TRIGGER_COMMAND:
                 normal_sampler.trigger_type = RISING_EDGE;
                 break;
@@ -213,14 +219,17 @@ void setup_IO(void)
     gpio_init(RANGE_PIN);
     gpio_init(CS_PIN);
     gpio_init(TRIGGER_PIN);
+    gpio_init(GAIN_PIN);
     
     gpio_set_dir(PS_SET_PIN, GPIO_OUT);
     gpio_set_dir(RANGE_PIN, GPIO_OUT);
+    gpio_set_dir(GAIN_PIN, GPIO_OUT);
     gpio_set_dir(CS_PIN, GPIO_OUT);
     gpio_set_dir(TRIGGER_PIN, GPIO_IN);
 
     gpio_put(PS_SET_PIN, 1); 
     gpio_put(RANGE_PIN, 0);
+    gpio_put(GAIN_PIN, 0);
     gpio_put(CS_PIN, 1);
 
     gpio_set_function(CAL_PIN, GPIO_FUNC_PWM);
