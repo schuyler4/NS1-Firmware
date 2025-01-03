@@ -8,7 +8,9 @@
 typedef struct
 {
     uint32_t high_range_offset;
+    uint32_t high_range_gain_offset;
     uint32_t low_range_offset;
+    uint32_t low_range_gain_offset;
 } Calibration_Offsets;
 
 #define BUFFER_LENGTH FLASH_PAGE_SIZE/sizeof(uint32_t)

@@ -148,17 +148,27 @@ int main(void)
                     char cal_string[MAX_STRING_LENGTH];
                     get_string(cal_string);
                     char* high_range_cal_string = malloc(4*sizeof(char));   
+                    char* high_range_gain_cal_string = malloc(4*sizeof(char));
                     char* low_range_cal_string = malloc(4*sizeof(char));
+                    char* low_range_gain_cal_string = malloc(4*sizeof(char));
                     memcpy(high_range_cal_string, cal_string, 4*sizeof(char));
-                    memcpy(low_range_cal_string, cal_string+4, 4*sizeof(char));
+                    memcpy(high_range_gain_cal_string, cal_string+4, 4*sizeof(char));
+                    memcpy(low_range_cal_string, cal_string+8, 4*sizeof(char));
+                    memcpy(low_range_gain_cal_string, cal_string+16, 4*sizeof(char));
                     uint16_t high_range_cal = atoi(high_range_cal_string);
+                    uint16_t high_range_cal_gain = atoi(high_range_cal_string);
                     uint16_t low_range_cal = atoi(low_range_cal_string);
+                    uint16_t low_range_cal_gain = atoi(low_range_gain_cal_string);
                     Calibration_Offsets calibration_offsets; 
                     calibration_offsets.high_range_offset = high_range_cal;
+                    calibration_offsets.high_range_gain_offset = high_range_cal_gain;
                     calibration_offsets.low_range_offset = low_range_cal;
+                    calibration_offsets.low_range_gain_offset = low_range_cal_gain;
                     write_calibration_offsets(calibration_offsets);
                     free(high_range_cal_string);
+                    free(high_range_gain_cal_string);
                     free(low_range_cal_string);
+                    free(low_range_gain_cal_string);
                     break;
                 }
             case READ_CAL:
@@ -168,10 +178,18 @@ int main(void)
                     uint8_t high_high_range_byte = (uint8_t)((calibration_offsets.high_range_offset >> 8) & 0xFF);
                     uint8_t low_low_range_byte = (uint8_t)(calibration_offsets.low_range_offset & 0xFF);
                     uint8_t high_low_range_byte = (uint8_t)((calibration_offsets.low_range_offset >> 8) & 0xFF);
+                    uint8_t low_high_range_byte_gain = (uint8_t)(calibration_offsets.high_range_offset & 0xFF);
+                    uint8_t high_high_range_byte_gain = (uint8_t)((calibration_offsets.high_range_offset >> 8) & 0xFF);
+                    uint8_t low_low_range_byte_gain = (uint8_t)(calibration_offsets.low_range_offset & 0xFF);
+                    uint8_t high_low_range_byte_gain = (uint8_t)((calibration_offsets.low_range_offset >> 8) & 0xFF);
                     write(1, &low_high_range_byte, sizeof(uint8_t));
                     write(1, &high_high_range_byte, sizeof(uint8_t));
+                    write(1, &low_high_range_byte_gain, sizeof(uint8_t));
+                    write(1, &high_high_range_byte_gain, sizeof(uint8_t));
                     write(1, &low_low_range_byte, sizeof(uint8_t));
                     write(1, &high_low_range_byte, sizeof(uint8_t)); 
+                    write(1, &low_low_range_byte_gain, sizeof(uint8_t));
+                    write(1, &high_low_range_byte_gain, sizeof(uint8_t)); 
                     break;
                 }
             default:
