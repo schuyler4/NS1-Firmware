@@ -11,7 +11,6 @@
 
 #define CLOCK_PIN 21
 #define PS_NOISE_SET_PIN 23
-#define POSITIVE_RAIL_ENABLE 26
 #define RANGE_PIN 27 
 #define GAIN_PIN 28
 
