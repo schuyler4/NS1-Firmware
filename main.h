@@ -10,7 +10,8 @@
 #define SAMPLE_COUNT 16384
 
 #define CLOCK_PIN 21
-#define PS_SET_PIN 23
+#define PS_NOISE_SET_PIN 23
+#define POSITIVE_RAIL_ENABLE 26
 #define RANGE_PIN 27 
 #define GAIN_PIN 28
 
@@ -71,5 +72,6 @@ void get_string(char* str);
 void setup_cal_pin(void);
 void run_trigger(void);
 void reset_triggers(void);
+void initialize_peripherals(void);
 
 #endif
