@@ -1,4 +1,4 @@
-# NS1 Firmware
+# NewtScope Firmware
 This is firmware to make a 62.5MS/s oscilloscope from a Pi Pico. This is done by utilizing the PIO and DMA on the RP2040 chip to clock in data at a very high rate.  Of course an analog front end and parallel ADC is also necessary.
 ## Control
 The oscilloscope system is controlled by a computer that the Pi Pico is connected to. This is done using basic serial over USB. The instrument control
