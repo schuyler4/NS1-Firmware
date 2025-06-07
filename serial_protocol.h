@@ -18,5 +18,6 @@
 #define READ_CAL 'k'
 #define AMPLIFIER_GAIN 'A'
 #define AMPLIFIER_UNITY 'a'
+#define ROLL_SAMPLE 'o'
 
 #endif

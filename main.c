@@ -191,6 +191,12 @@ int main(void)
                         write(1, &high_low_range_byte_gain, sizeof(uint8_t)); 
                         break;
                     }
+                case ROLL_SAMPLE:
+                    {
+                        uint8_t point = (uint8_t)(gpio_get_all() & SAMPLE_BIT_MASK);
+                        write(1, &point, sizeof(uint8_t));
+                        break;
+                    }
                 default:
                     // Do nothing
                     break;
@@ -252,6 +258,13 @@ void setup_IO(void)
     gpio_init(CS_PIN);
     gpio_init(TRIGGER_PIN);
     gpio_init(GAIN_PIN);
+
+    uint8_t i;
+    for(i = 0; i < SAMPLE_BIT_COUNT; i++)
+    {
+        gpio_init(PIN_BASE + i); 
+        gpio_set_dir(PIN_BASE + i, GPIO_IN);
+    } 
     
     gpio_set_dir(PS_NOISE_SET_PIN, GPIO_OUT);
     gpio_set_dir(RANGE_PIN, GPIO_OUT);
@@ -417,7 +430,7 @@ void trigger(Sampler* force_sampler, Sampler* normal_sampler, uint8_t forced)
         if(!normal_sampler->created)
         {
             uint8_t pin;
-            for(pin = 0; pin < 8; pin++)
+            for(pin = 0; pin < SAMPLE_BIT_COUNT; pin++)
                 pio_sm_set_consecutive_pindirs(normal_sampler->pio, normal_sampler->sm, pin, 1, false);
             pio_gpio_init(normal_sampler->pio, TRIGGER_PIN);
             pio_sm_set_enabled(normal_sampler->pio, normal_sampler->sm, false);
