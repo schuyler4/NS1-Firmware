@@ -162,7 +162,7 @@ int main(void)
                     read_cal_command(); 
                     break;
                 case START_RECORD:
-                    add_repeating_timer_ms(-1, record_callback, NULL, &record_timer);
+                    //add_repeating_timer_ms(-1, record_callback, NULL, &record_timer);
                     break;
                 case RECORD_SAMPLE:
                     {
@@ -170,6 +170,12 @@ int main(void)
                         write(1, &point, sizeof(uint8_t));
                         break;
                     }
+                case ENABLE_SIGNAL_TRIGGER:
+                    gpio_put(TRIGGER_ENABLE_PIN, 1);
+                    break;
+                case DISABLE_SIGNAL_TRIGGER:
+                    gpio_put(TRIGGER_ENABLE_PIN, 0);
+                    break;
                 default:
                     // Do nothing
                     break;
@@ -231,6 +237,7 @@ void setup_IO(void)
     gpio_init(CS_PIN);
     gpio_init(TRIGGER_PIN);
     gpio_init(GAIN_PIN);
+    gpio_init(TRIGGER_ENABLE_PIN);
 
     uint8_t i;
     for(i = 0; i < SAMPLE_BIT_COUNT; i++)
@@ -244,11 +251,13 @@ void setup_IO(void)
     gpio_set_dir(GAIN_PIN, GPIO_OUT);
     gpio_set_dir(CS_PIN, GPIO_OUT);
     gpio_set_dir(TRIGGER_PIN, GPIO_IN);
+    gpio_set_dir(TRIGGER_ENABLE_PIN, GPIO_OUT);
 
     gpio_put(PS_NOISE_SET_PIN, 1); 
     gpio_put(RANGE_PIN, 0);
     gpio_put(GAIN_PIN, 0);
     gpio_put(CS_PIN, 1);
+    gpio_put(TRIGGER_ENABLE_PIN, 1);
 
     gpio_set_function(CAL_PIN, GPIO_FUNC_PWM);
 }
@@ -257,7 +266,6 @@ void setup_SPI(void)
 {
     spi_init(spi1, SPI_SCK_FREQUENCY);
     gpio_set_function(SPI_SCK, GPIO_FUNC_SPI);
-    gpio_set_function(SPI_RX, GPIO_FUNC_SPI);
     gpio_set_function(SPI_TX, GPIO_FUNC_SPI);
 }
 
