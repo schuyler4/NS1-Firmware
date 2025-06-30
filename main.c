@@ -42,6 +42,7 @@ static uint8_t aligned_memory[SAMPLE_COUNT] __attribute__((aligned(SAMPLE_COUNT)
 
 uint clk_div;
 uint16_t last_index;
+uint16_t record_index;
 
 int main(void)
 {
@@ -55,6 +56,7 @@ int main(void)
         {
             struct repeating_timer record_timer;
             uint8_t record_running = 0;
+            record_index = 0;
 
             if(!peripherals_initialized)
             {
@@ -162,12 +164,14 @@ int main(void)
                     read_cal_command(); 
                     break;
                 case START_RECORD:
-                    //add_repeating_timer_ms(-1, record_callback, NULL, &record_timer);
+                    add_repeating_timer_ms(-1, record_callback, NULL, &record_timer);
                     break;
                 case RECORD_SAMPLE:
                     {
-                        uint8_t point = (uint8_t)(gpio_get_all() & SAMPLE_BIT_MASK);
-                        write(1, &point, sizeof(uint8_t));
+                        write(record_index, aligned_memory, sizeof(uint8_t));
+                        char carriage_return = '\r';
+                        write(1, &carriage_return, sizeof(carriage_return));
+                        record_index = 0;
                         break;
                     }
                 case ENABLE_SIGNAL_TRIGGER:
@@ -277,10 +281,11 @@ void setup_cal_pin(void)
     pwm_set_enabled(slice_number, 1);
 }
 
-void record_callback(void)
+bool record_callback(struct repeating_timer *t)
 {
-    uint8_t point = (uint8_t)(gpio_get_all() & SAMPLE_BIT_MASK);
-    write(1, &point, sizeof(uint8_t));
+    aligned_memory[record_index] = (uint8_t)(gpio_get_all() & SAMPLE_BIT_MASK);
+    record_index++;
+    return true;
 }
 
 void dma_complete_handler(void)
