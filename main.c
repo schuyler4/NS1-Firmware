@@ -131,11 +131,13 @@ int main(void)
                         {
                             pio_sm_set_enabled(force_sampler.pio, force_sampler.sm, false);
                             dma_channel_abort(force_sampler.dma_channel);
+                            dma_channel_hw_addr(force_sampler.dma_channel)->transfer_count = 0;
                         } 
                         else
                         {
                             pio_sm_set_enabled(normal_sampler.pio, normal_sampler.sm, false);
                             dma_channel_abort(normal_sampler.dma_channel);
+                            dma_channel_hw_addr(force_sampler.dma_channel)->transfer_count = 0;
                         }
                         irq_set_enabled(DMA_IRQ_0, false);
                         reset_triggers();
@@ -370,10 +372,10 @@ void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
 
 uint16_t get_dma_last_index(Sampler normal_sampler)
 {
-    if(dma_channel_is_busy(1)) 
-        return SAMPLE_COUNT - (dma_channel_hw_addr(1)->transfer_count*4) - 1;
+    if(dma_channel_is_busy(force_sampler.dma_channel)) 
+        return SAMPLE_COUNT - (dma_channel_hw_addr(force_sampler.dma_channel)->transfer_count*4) - 1;
     if(dma_channel_is_busy(normal_sampler.dma_channel))
-        return SAMPLE_COUNT - (dma_channel_hw_addr(normal_sampler.dma_channel)->transfer_count*4) - 1 - (SAMPLE_COUNT/2);
+        return SAMPLE_COUNT - (dma_channel_hw_addr(normal_sampler.dma_channel)->transfer_count*4) - (SAMPLE_COUNT/2) - 1;
     return 0;
 }
 
