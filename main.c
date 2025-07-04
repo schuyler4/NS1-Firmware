@@ -42,7 +42,6 @@ static uint8_t aligned_memory[SAMPLE_COUNT] __attribute__((aligned(SAMPLE_COUNT)
 
 uint clk_div;
 uint16_t last_index;
-uint16_t record_index;
 
 int main(void)
 {
@@ -54,10 +53,6 @@ int main(void)
     {
         if(tud_mounted())
         {
-            struct repeating_timer record_timer;
-            uint8_t record_running = 0;
-            record_index = 0;
-
             if(!peripherals_initialized)
             {
                 initialize_peripherals();
@@ -107,21 +102,17 @@ int main(void)
                     normal_sampler.trigger_type = FALLING_EDGE;
                     break;
                 case TRIGGER_COMMAND:
-                    if(!record_running)
                     {
                         reset_triggers();
                         force_trigger = 0;
                         trigger(&force_sampler, &normal_sampler, force_trigger);
+                        break;
                     }
-                    break;
                 case FORCE_TRIGGER_COMMAND:
                     {
-                        if(!record_running)
-                        {
-                            reset_triggers();
-                            force_trigger = 1;
-                            trigger(&force_sampler, &normal_sampler, force_trigger);
-                        }
+                        reset_triggers();
+                        force_trigger = 1;
+                        trigger(&force_sampler, &normal_sampler, force_trigger);
                         break;
                     }
                 case TRIGGER_LEVEL_COMMAND:
@@ -136,44 +127,14 @@ int main(void)
                     update_clock(force_sampler, normal_sampler); 
                     break;
                 case STOP_COMMAND:
-                    {
-                        if(record_running)
-                        {
-                            cancel_repeating_timer(&record_timer); 
-                        }
-                        uint32_t interrupt_state = save_and_disable_interrupts();
-                        if(force_trigger)
-                        {
-                            pio_sm_set_enabled(force_sampler.pio, force_sampler.sm, false);
-                            dma_channel_abort(force_sampler.dma_channel);
-                        } 
-                        else
-                        {
-                            pio_sm_set_enabled(normal_sampler.pio, normal_sampler.sm, false);
-                            dma_channel_abort(normal_sampler.dma_channel);
-                        }
-                        irq_set_enabled(DMA_IRQ_0, false);
-                        reset_triggers();
-                        restore_interrupts(interrupt_state);
-                        break;
-                    }
+                    stop_capture(); 
+                    break;
                 case SET_CAL:
                     set_cal_command();
                     break;
                 case READ_CAL:
                     read_cal_command(); 
                     break;
-                case START_RECORD:
-                    add_repeating_timer_ms(-1, record_callback, NULL, &record_timer);
-                    break;
-                case RECORD_SAMPLE:
-                    {
-                        write(record_index, aligned_memory, sizeof(uint8_t));
-                        char carriage_return = '\r';
-                        write(1, &carriage_return, sizeof(carriage_return));
-                        record_index = 0;
-                        break;
-                    }
                 case ENABLE_SIGNAL_TRIGGER:
                     gpio_put(TRIGGER_ENABLE_PIN, 1);
                     break;
@@ -281,13 +242,6 @@ void setup_cal_pin(void)
     pwm_set_enabled(slice_number, 1);
 }
 
-bool record_callback(struct repeating_timer *t)
-{
-    aligned_memory[record_index] = (uint8_t)(gpio_get_all() & SAMPLE_BIT_MASK);
-    record_index++;
-    return true;
-}
-
 void dma_complete_handler(void)
 {
     if(force_trigger)
@@ -314,6 +268,38 @@ void dma_complete_handler(void)
         normal_sampler.created = 0;
     }
     trigger_vector_available = 1; 
+}
+
+void stop_capture(void)
+{
+    uint32_t interrupt_state = save_and_disable_interrupts();
+    if(force_trigger)
+    {
+        pio_sm_set_enabled(force_sampler.pio, force_sampler.sm, false);
+        dma_channel_abort(force_sampler.dma_channel);
+        irq_set_enabled(DMA_IRQ_0, false);
+    } 
+    else
+    {
+        pio_interrupt_clear(normal_sampler.pio, 0);
+        last_index = get_dma_last_index(normal_sampler);
+        dma_channel_abort(normal_sampler.dma_channel);
+        dma_channel_abort(normal_sampler.second_dma_channel);
+        irq_set_enabled(pio_get_dreq(normal_sampler.pio, normal_sampler.sm, false), false);
+        pio_sm_set_enabled(normal_sampler.pio, normal_sampler.sm, false);
+        if(normal_sampler.trigger_type == RISING_EDGE)
+            pio_remove_program(normal_sampler.pio, &normal_trigger_positive_program, normal_sampler.offset);
+        else if(normal_sampler.trigger_type == FALLING_EDGE)
+            pio_remove_program(normal_sampler.pio, &normal_trigger_negative_program, normal_sampler.offset);
+        irq_set_enabled(PIO0_IRQ_0, false);
+        irq_remove_handler(PIO0_IRQ_0, dma_complete_handler);
+        normal_sampler.created = 0;    
+    }
+    uint16_t i;
+    for(i=0; i < SAMPLE_COUNT; i++)
+        aligned_memory[i] = 0;
+    reset_triggers();
+    restore_interrupts(interrupt_state);
 }
 
 void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
@@ -362,10 +348,10 @@ void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
 
 uint16_t get_dma_last_index(Sampler normal_sampler)
 {
-    if(dma_channel_is_busy(1)) 
-        return SAMPLE_COUNT - (dma_channel_hw_addr(1)->transfer_count*4) - 1;
+    if(dma_channel_is_busy(force_sampler.dma_channel)) 
+        return SAMPLE_COUNT - (dma_channel_hw_addr(force_sampler.dma_channel)->transfer_count*4) - 1;
     if(dma_channel_is_busy(normal_sampler.dma_channel))
-        return SAMPLE_COUNT - (dma_channel_hw_addr(normal_sampler.dma_channel)->transfer_count*4) - 1 - (SAMPLE_COUNT/2);
+        return SAMPLE_COUNT - (dma_channel_hw_addr(normal_sampler.dma_channel)->transfer_count*4) - (SAMPLE_COUNT/2) - 1;
     return 0;
 }
 

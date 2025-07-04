@@ -77,6 +77,8 @@ void reset_triggers(void);
 void initialize_peripherals(void);
 void set_cal_command(void);
 void read_cal_command(void);
+void stop_capture(void);
 bool record_callback(struct repeating_timer *t);
+void stop_capture(void);
 
 #endif
