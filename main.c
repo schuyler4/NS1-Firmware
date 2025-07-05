@@ -102,10 +102,12 @@ int main(void)
                     normal_sampler.trigger_type = FALLING_EDGE;
                     break;
                 case TRIGGER_COMMAND:
-                    reset_triggers();
-                    force_trigger = 0;
-                    trigger(&force_sampler, &normal_sampler, force_trigger);
-                    break;
+                    {
+                        reset_triggers();
+                        force_trigger = 0;
+                        trigger(&force_sampler, &normal_sampler, force_trigger);
+                        break;
+                    }
                 case FORCE_TRIGGER_COMMAND:
                     {
                         reset_triggers();
@@ -124,79 +126,18 @@ int main(void)
                 case CLOCK_DIV_COMMAND:
                     update_clock(force_sampler, normal_sampler); 
                     break;
-                case STOP_COMMAND:
-                    {
-                        uint32_t interrupt_state = save_and_disable_interrupts();
-                        if(force_trigger)
-                        {
-                            pio_sm_set_enabled(force_sampler.pio, force_sampler.sm, false);
-                            dma_channel_abort(force_sampler.dma_channel);
-                        } 
-                        else
-                        {
-                            pio_sm_set_enabled(normal_sampler.pio, normal_sampler.sm, false);
-                            dma_channel_abort(normal_sampler.dma_channel);
-                        }
-                        irq_set_enabled(DMA_IRQ_0, false);
-                        reset_triggers();
-                        restore_interrupts(interrupt_state);
-                        break;
-                    }
                 case SET_CAL:
-                    {
-                        char cal_string[MAX_STRING_LENGTH];
-                        get_string(cal_string);
-                        char* high_range_cal_string = malloc(4*sizeof(char));   
-                        char* high_range_gain_cal_string = malloc(4*sizeof(char));
-                        char* low_range_cal_string = malloc(4*sizeof(char));
-                        char* low_range_gain_cal_string = malloc(4*sizeof(char));
-                        memcpy(high_range_cal_string, cal_string, 4*sizeof(char));
-                        memcpy(high_range_gain_cal_string, cal_string+4, 4*sizeof(char));
-                        memcpy(low_range_cal_string, cal_string+8, 4*sizeof(char));
-                        memcpy(low_range_gain_cal_string, cal_string+12, 4*sizeof(char));
-                        uint16_t high_range_cal = atoi(high_range_cal_string);
-                        uint16_t high_range_cal_gain = atoi(high_range_gain_cal_string);
-                        uint16_t low_range_cal = atoi(low_range_cal_string);
-                        uint16_t low_range_cal_gain = atoi(low_range_gain_cal_string);
-                        Calibration_Offsets calibration_offsets; 
-                        calibration_offsets.high_range_offset = high_range_cal;
-                        calibration_offsets.high_range_gain_offset = high_range_cal_gain;
-                        calibration_offsets.low_range_offset = low_range_cal;
-                        calibration_offsets.low_range_gain_offset = low_range_cal_gain;
-                        write_calibration_offsets(calibration_offsets);
-                        free(high_range_cal_string);
-                        free(high_range_gain_cal_string);
-                        free(low_range_cal_string);
-                        free(low_range_gain_cal_string);
-                        break;
-                    }
+                    set_cal_command();
+                    break;
                 case READ_CAL:
-                    {
-                        Calibration_Offsets calibration_offsets = read_calibration_offsets();
-                        uint8_t low_high_range_byte = (uint8_t)(calibration_offsets.high_range_offset & 0xFF);
-                        uint8_t high_high_range_byte = (uint8_t)((calibration_offsets.high_range_offset >> 8) & 0xFF);
-                        uint8_t low_high_range_byte_gain = (uint8_t)(calibration_offsets.high_range_gain_offset & 0xFF);
-                        uint8_t high_high_range_byte_gain = (uint8_t)((calibration_offsets.high_range_gain_offset >> 8) & 0xFF);
-                        uint8_t low_low_range_byte = (uint8_t)(calibration_offsets.low_range_offset & 0xFF);
-                        uint8_t high_low_range_byte = (uint8_t)((calibration_offsets.low_range_offset >> 8) & 0xFF);
-                        uint8_t low_low_range_byte_gain = (uint8_t)(calibration_offsets.low_range_gain_offset & 0xFF);
-                        uint8_t high_low_range_byte_gain = (uint8_t)((calibration_offsets.low_range_gain_offset >> 8) & 0xFF);
-                        write(1, &low_high_range_byte, sizeof(uint8_t));
-                        write(1, &high_high_range_byte, sizeof(uint8_t));
-                        write(1, &low_high_range_byte_gain, sizeof(uint8_t));
-                        write(1, &high_high_range_byte_gain, sizeof(uint8_t));
-                        write(1, &low_low_range_byte, sizeof(uint8_t));
-                        write(1, &high_low_range_byte, sizeof(uint8_t)); 
-                        write(1, &low_low_range_byte_gain, sizeof(uint8_t));
-                        write(1, &high_low_range_byte_gain, sizeof(uint8_t)); 
-                        break;
-                    }
-                case ROLL_SAMPLE:
-                    {
-                        uint8_t point = (uint8_t)(gpio_get_all() & SAMPLE_BIT_MASK);
-                        write(1, &point, sizeof(uint8_t));
-                        break;
-                    }
+                    read_cal_command(); 
+                    break;
+                case ENABLE_SIGNAL_TRIGGER:
+                    gpio_put(TRIGGER_ENABLE_PIN, 1);
+                    break;
+                case DISABLE_SIGNAL_TRIGGER:
+                    gpio_put(TRIGGER_ENABLE_PIN, 0);
+                    break;
                 default:
                     // Do nothing
                     break;
@@ -258,6 +199,7 @@ void setup_IO(void)
     gpio_init(CS_PIN);
     gpio_init(TRIGGER_PIN);
     gpio_init(GAIN_PIN);
+    gpio_init(TRIGGER_ENABLE_PIN);
 
     uint8_t i;
     for(i = 0; i < SAMPLE_BIT_COUNT; i++)
@@ -271,11 +213,13 @@ void setup_IO(void)
     gpio_set_dir(GAIN_PIN, GPIO_OUT);
     gpio_set_dir(CS_PIN, GPIO_OUT);
     gpio_set_dir(TRIGGER_PIN, GPIO_IN);
+    gpio_set_dir(TRIGGER_ENABLE_PIN, GPIO_OUT);
 
     gpio_put(PS_NOISE_SET_PIN, 1); 
     gpio_put(RANGE_PIN, 0);
     gpio_put(GAIN_PIN, 0);
     gpio_put(CS_PIN, 1);
+    gpio_put(TRIGGER_ENABLE_PIN, 1);
 
     gpio_set_function(CAL_PIN, GPIO_FUNC_PWM);
 }
@@ -284,7 +228,6 @@ void setup_SPI(void)
 {
     spi_init(spi1, SPI_SCK_FREQUENCY);
     gpio_set_function(SPI_SCK, GPIO_FUNC_SPI);
-    gpio_set_function(SPI_RX, GPIO_FUNC_SPI);
     gpio_set_function(SPI_TX, GPIO_FUNC_SPI);
 }
 
@@ -370,10 +313,10 @@ void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
 
 uint16_t get_dma_last_index(Sampler normal_sampler)
 {
-    if(dma_channel_is_busy(1)) 
-        return SAMPLE_COUNT - (dma_channel_hw_addr(1)->transfer_count*4) - 1;
+    if(dma_channel_is_busy(normal_sampler.second_dma_channel)) 
+        return SAMPLE_COUNT - (dma_channel_hw_addr(normal_sampler.second_dma_channel)->transfer_count*4) - 1;
     if(dma_channel_is_busy(normal_sampler.dma_channel))
-        return SAMPLE_COUNT - (dma_channel_hw_addr(normal_sampler.dma_channel)->transfer_count*4) - 1 - (SAMPLE_COUNT/2);
+        return SAMPLE_COUNT - (dma_channel_hw_addr(normal_sampler.dma_channel)->transfer_count*4) - (SAMPLE_COUNT/2) - 1;
     return 0;
 }
 
@@ -449,4 +392,53 @@ void trigger(Sampler* force_sampler, Sampler* normal_sampler, uint8_t forced)
         }
         arm_sampler(*normal_sampler, PIN_BASE, forced);
     }
+}
+
+void set_cal_command(void)
+{
+    char cal_string[MAX_STRING_LENGTH];
+    get_string(cal_string);
+    char* high_range_cal_string = malloc(4*sizeof(char));   
+    char* high_range_gain_cal_string = malloc(4*sizeof(char));
+    char* low_range_cal_string = malloc(4*sizeof(char));
+    char* low_range_gain_cal_string = malloc(4*sizeof(char));
+    memcpy(high_range_cal_string, cal_string, 4*sizeof(char));
+    memcpy(high_range_gain_cal_string, cal_string+4, 4*sizeof(char));
+    memcpy(low_range_cal_string, cal_string+8, 4*sizeof(char));
+    memcpy(low_range_gain_cal_string, cal_string+12, 4*sizeof(char));
+    uint16_t high_range_cal = atoi(high_range_cal_string);
+    uint16_t high_range_cal_gain = atoi(high_range_gain_cal_string);
+    uint16_t low_range_cal = atoi(low_range_cal_string);
+    uint16_t low_range_cal_gain = atoi(low_range_gain_cal_string);
+    Calibration_Offsets calibration_offsets; 
+    calibration_offsets.high_range_offset = high_range_cal;
+    calibration_offsets.high_range_gain_offset = high_range_cal_gain;
+    calibration_offsets.low_range_offset = low_range_cal;
+    calibration_offsets.low_range_gain_offset = low_range_cal_gain;
+    write_calibration_offsets(calibration_offsets);
+    free(high_range_cal_string);
+    free(high_range_gain_cal_string);
+    free(low_range_cal_string);
+    free(low_range_gain_cal_string);
+}
+
+void read_cal_command(void)
+{
+    Calibration_Offsets calibration_offsets = read_calibration_offsets();
+    uint8_t low_high_range_byte = (uint8_t)(calibration_offsets.high_range_offset & 0xFF);
+    uint8_t high_high_range_byte = (uint8_t)((calibration_offsets.high_range_offset >> 8) & 0xFF);
+    uint8_t low_high_range_byte_gain = (uint8_t)(calibration_offsets.high_range_gain_offset & 0xFF);
+    uint8_t high_high_range_byte_gain = (uint8_t)((calibration_offsets.high_range_gain_offset >> 8) & 0xFF);
+    uint8_t low_low_range_byte = (uint8_t)(calibration_offsets.low_range_offset & 0xFF);
+    uint8_t high_low_range_byte = (uint8_t)((calibration_offsets.low_range_offset >> 8) & 0xFF);
+    uint8_t low_low_range_byte_gain = (uint8_t)(calibration_offsets.low_range_gain_offset & 0xFF);
+    uint8_t high_low_range_byte_gain = (uint8_t)((calibration_offsets.low_range_gain_offset >> 8) & 0xFF);
+    write(1, &low_high_range_byte, sizeof(uint8_t));
+    write(1, &high_high_range_byte, sizeof(uint8_t));
+    write(1, &low_high_range_byte_gain, sizeof(uint8_t));
+    write(1, &high_high_range_byte_gain, sizeof(uint8_t));
+    write(1, &low_low_range_byte, sizeof(uint8_t));
+    write(1, &high_low_range_byte, sizeof(uint8_t)); 
+    write(1, &low_low_range_byte_gain, sizeof(uint8_t));
+    write(1, &high_low_range_byte_gain, sizeof(uint8_t)); 
 }

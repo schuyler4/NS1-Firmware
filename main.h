@@ -26,6 +26,7 @@
 #define SPI_TX 11
 #define CS_PIN 13
 #define CAL_PIN 14
+#define TRIGGER_ENABLE_PIN 12
 
 #define MAX_STRING_LENGTH 100
 
@@ -74,5 +75,9 @@ void setup_cal_pin(void);
 void run_trigger(void);
 void reset_triggers(void);
 void initialize_peripherals(void);
+void set_cal_command(void);
+void read_cal_command(void);
+void stop_capture(void);
+bool record_callback(struct repeating_timer *t);
 
 #endif
