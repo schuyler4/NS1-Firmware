@@ -126,9 +126,6 @@ int main(void)
                 case CLOCK_DIV_COMMAND:
                     update_clock(force_sampler, normal_sampler); 
                     break;
-                case STOP_COMMAND:
-                    stop_capture(); 
-                    break;
                 case SET_CAL:
                     set_cal_command();
                     break;
@@ -270,38 +267,6 @@ void dma_complete_handler(void)
     trigger_vector_available = 1; 
 }
 
-void stop_capture(void)
-{
-    uint32_t interrupt_state = save_and_disable_interrupts();
-    if(force_trigger)
-    {
-        pio_sm_set_enabled(force_sampler.pio, force_sampler.sm, false);
-        dma_channel_abort(force_sampler.dma_channel);
-        irq_set_enabled(DMA_IRQ_0, false);
-    } 
-    else
-    {
-        pio_interrupt_clear(normal_sampler.pio, 0);
-        last_index = get_dma_last_index(normal_sampler);
-        dma_channel_abort(normal_sampler.dma_channel);
-        dma_channel_abort(normal_sampler.second_dma_channel);
-        irq_set_enabled(pio_get_dreq(normal_sampler.pio, normal_sampler.sm, false), false);
-        pio_sm_set_enabled(normal_sampler.pio, normal_sampler.sm, false);
-        if(normal_sampler.trigger_type == RISING_EDGE)
-            pio_remove_program(normal_sampler.pio, &normal_trigger_positive_program, normal_sampler.offset);
-        else if(normal_sampler.trigger_type == FALLING_EDGE)
-            pio_remove_program(normal_sampler.pio, &normal_trigger_negative_program, normal_sampler.offset);
-        irq_set_enabled(PIO0_IRQ_0, false);
-        irq_remove_handler(PIO0_IRQ_0, dma_complete_handler);
-        normal_sampler.created = 0;    
-    }
-    uint16_t i;
-    for(i=0; i < SAMPLE_COUNT; i++)
-        aligned_memory[i] = 0;
-    reset_triggers();
-    restore_interrupts(interrupt_state);
-}
-
 void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
 {
     if(!force_trigger)
@@ -348,8 +313,8 @@ void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
 
 uint16_t get_dma_last_index(Sampler normal_sampler)
 {
-    if(dma_channel_is_busy(force_sampler.dma_channel)) 
-        return SAMPLE_COUNT - (dma_channel_hw_addr(force_sampler.dma_channel)->transfer_count*4) - 1;
+    if(dma_channel_is_busy(normal_sampler.second_dma_channel)) 
+        return SAMPLE_COUNT - (dma_channel_hw_addr(normal_sampler.second_dma_channel)->transfer_count*4) - 1;
     if(dma_channel_is_busy(normal_sampler.dma_channel))
         return SAMPLE_COUNT - (dma_channel_hw_addr(normal_sampler.dma_channel)->transfer_count*4) - (SAMPLE_COUNT/2) - 1;
     return 0;
