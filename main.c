@@ -239,6 +239,8 @@ void setup_cal_pin(void)
     pwm_set_enabled(slice_number, 1);
 }
 
+
+
 void dma_complete_handler(void)
 {
     if(force_trigger)
@@ -250,21 +252,26 @@ void dma_complete_handler(void)
     }
     else
     {
-        pio_interrupt_clear(normal_sampler.pio, 0);
-        last_index = get_dma_last_index(normal_sampler);
-        dma_channel_abort(normal_sampler.dma_channel);
-        dma_channel_abort(normal_sampler.second_dma_channel);
-        irq_set_enabled(pio_get_dreq(normal_sampler.pio, normal_sampler.sm, false), false);
-        pio_sm_set_enabled(normal_sampler.pio, normal_sampler.sm, false);
-        if(normal_sampler.trigger_type == RISING_EDGE)
-            pio_remove_program(normal_sampler.pio, &normal_trigger_positive_program, normal_sampler.offset);
-        else if(normal_sampler.trigger_type == FALLING_EDGE)
-            pio_remove_program(normal_sampler.pio, &normal_trigger_negative_program, normal_sampler.offset);
-        irq_set_enabled(PIO0_IRQ_0, false);
-        irq_remove_handler(PIO0_IRQ_0, dma_complete_handler);
-        normal_sampler.created = 0;
+        stop_trigger();
     }
     trigger_vector_available = 1; 
+}
+
+void stop_trigger(void)
+{
+    pio_interrupt_clear(normal_sampler.pio, 0);
+    last_index = get_dma_last_index(normal_sampler);
+    dma_channel_abort(normal_sampler.dma_channel);
+    dma_channel_abort(normal_sampler.second_dma_channel);
+    irq_set_enabled(pio_get_dreq(normal_sampler.pio, normal_sampler.sm, false), false);
+    pio_sm_set_enabled(normal_sampler.pio, normal_sampler.sm, false);
+    if(normal_sampler.trigger_type == RISING_EDGE)
+        pio_remove_program(normal_sampler.pio, &normal_trigger_positive_program, normal_sampler.offset);
+    else if(normal_sampler.trigger_type == FALLING_EDGE)
+        pio_remove_program(normal_sampler.pio, &normal_trigger_negative_program, normal_sampler.offset);
+    irq_set_enabled(PIO0_IRQ_0, false);
+    irq_remove_handler(PIO0_IRQ_0, dma_complete_handler);
+    normal_sampler.created = 0;
 }
 
 void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
@@ -322,6 +329,10 @@ uint16_t get_dma_last_index(Sampler normal_sampler)
 
 void update_clock(Sampler force_sampler, Sampler normal_sampler)
 {
+    if(normal_sampler.created)
+    {
+        stop_trigger();
+    }
     char code_string[MAX_STRING_LENGTH];
     get_string(code_string);
     uint16_t commanded_clock_div = atoi(code_string);   

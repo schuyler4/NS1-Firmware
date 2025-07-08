@@ -15,7 +15,6 @@
 #define PS_NOISE_SET_PIN 23
 #define RANGE_PIN 27 
 #define GAIN_PIN 28
-
 #define TRIGGER_PIN 8
 
 #define SIMU_WAVEFORM_POINTS 50
@@ -79,5 +78,6 @@ void set_cal_command(void);
 void read_cal_command(void);
 void stop_capture(void);
 bool record_callback(struct repeating_timer *t);
+void stop_trigger(void);
 
 #endif
