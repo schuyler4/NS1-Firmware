@@ -56,21 +56,7 @@ int main(void)
                 initialize_peripherals();
                 peripherals_initialized = 1;
             }
-            if(trigger_vector_available)
-            {
-                if(force_trigger)
-                {
-                    write(1, (char*)force_sampler.capture_buffer, SAMPLE_COUNT*sizeof(char));
-                    free(force_sampler.capture_buffer);
-                }
-                else
-                {
-                    flatten_ring_buffer(normal_sampler.capture_buffer, last_index, SAMPLE_COUNT);
-                    write(1, (char*)normal_sampler.capture_buffer, SAMPLE_COUNT*sizeof(char));
-                    normal_sampler.created = 0;
-                }
-                trigger_vector_available = 0;
-            }
+            
 
             char command = (char)getchar_timeout_us(CHARACTER_TIMEOUT);
             switch(command)
@@ -95,12 +81,14 @@ int main(void)
                     break;
                 case TRIGGER_COMMAND:
                     {
+                        trigger_vector_available = 0;
                         force_trigger = 0;
                         trigger(&force_sampler, &normal_sampler, force_trigger);
                         break;
                     }
                 case FORCE_TRIGGER_COMMAND:
                     {
+                        trigger_vector_available = 0;
                         force_trigger = 1;
                         trigger(&force_sampler, &normal_sampler, force_trigger);
                         break;
@@ -131,6 +119,21 @@ int main(void)
                 default:
                     // Do nothing
                     break;
+            }
+
+            if(trigger_vector_available)
+            {
+                if(force_trigger)
+                {
+                    write(1, (char*)force_sampler.capture_buffer, SAMPLE_COUNT*sizeof(char));
+                    free(force_sampler.capture_buffer);
+                }
+                else
+                {
+                    flatten_ring_buffer(normal_sampler.capture_buffer, last_index, SAMPLE_COUNT);
+                    write(1, (char*)normal_sampler.capture_buffer, SAMPLE_COUNT*sizeof(char));
+                }
+                trigger_vector_available = 0;
             }
         }
     }
@@ -276,8 +279,6 @@ void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
         dma_channel_configure(sampler.dma_channel, &c,  sampler.capture_buffer, &sampler.pio->rxf[sampler.sm], SAMPLE_COUNT/8, true);
         dma_channel_configure(sampler.second_dma_channel, &c2,  &sampler.capture_buffer[SAMPLE_COUNT/2], 
                               &sampler.pio->rxf[sampler.sm], SAMPLE_COUNT/8, false);
-        pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
-        pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
     }
     else
     {
@@ -292,6 +293,11 @@ void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
         irq_set_enabled(DMA_IRQ_0, true);
     }
     pio_sm_set_enabled(sampler.pio, sampler.sm, true);
+    if(!force_trigger)
+    {
+        pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
+        pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
+    }
 }
 
 uint16_t get_dma_last_index(Sampler normal_sampler)
@@ -329,16 +335,14 @@ void trigger(Sampler* force_sampler, Sampler* normal_sampler, uint8_t forced)
     {
         if(normal_sampler->created)
         {
-            pio_sm_set_enabled(normal_sampler->pio, normal_sampler->sm, false);
-            if(normal_sampler->trigger_type == RISING_EDGE)
-                pio_remove_program(normal_sampler->pio, &normal_trigger_positive_program, normal_sampler->offset);
-            else if(normal_sampler->trigger_type == FALLING_EDGE)
-                pio_remove_program(normal_sampler->pio, &normal_trigger_negative_program, normal_sampler->offset);
-            normal_sampler->created = 0;
+            stop_trigger();
         }
         force_sampler->capture_buffer = malloc(SAMPLE_COUNT*sizeof(uint8_t));
         if(!force_sampler->created)
         {
+            uint8_t pin;
+            for(pin = 0; pin < SAMPLE_BIT_COUNT; pin++)
+                pio_sm_set_consecutive_pindirs(force_sampler->pio, normal_sampler->sm, pin, 1, false);
             pio_sm_set_enabled(force_sampler->pio, force_sampler->sm, false);
             pio_sm_clear_fifos(force_sampler->pio, force_sampler->sm);
             pio_sm_restart(force_sampler->pio, force_sampler->sm);
