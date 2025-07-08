@@ -28,8 +28,6 @@
 
 #include "sampler.pio.h"
 
-#define TEST_PIN 15
-
 static uint8_t trigger_flag = 0;
 uint8_t force_trigger = 0;
 
@@ -74,12 +72,6 @@ int main(void)
                 trigger_vector_available = 0;
             }
 
-            if(trigger_flag && !gpio_get(TRIGGER_PIN))
-            {
-                trigger(&force_sampler, &normal_sampler, force_trigger);
-                trigger_flag = 0;
-            }
-
             char command = (char)getchar_timeout_us(CHARACTER_TIMEOUT);
             switch(command)
             {
@@ -103,14 +95,12 @@ int main(void)
                     break;
                 case TRIGGER_COMMAND:
                     {
-                        reset_triggers();
                         force_trigger = 0;
                         trigger(&force_sampler, &normal_sampler, force_trigger);
                         break;
                     }
                 case FORCE_TRIGGER_COMMAND:
                     {
-                        reset_triggers();
                         force_trigger = 1;
                         trigger(&force_sampler, &normal_sampler, force_trigger);
                         break;
@@ -175,13 +165,6 @@ void sampler_init(Sampler* sampler, uint8_t sampler_number, PIO pio_module)
     sampler->trigger_type = RISING_EDGE;
 }
 
-void reset_triggers(void)
-{
-    trigger_vector_available = 0;
-    trigger_flag = 0;
-    if(force_trigger) dma_hw->ints0 = 1 << force_sampler.dma_channel;
-}
-
 void get_string(char* str)
 {
     uint8_t i;
@@ -239,8 +222,6 @@ void setup_cal_pin(void)
     pwm_set_enabled(slice_number, 1);
 }
 
-
-
 void dma_complete_handler(void)
 {
     if(force_trigger)
@@ -295,6 +276,8 @@ void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
         dma_channel_configure(sampler.dma_channel, &c,  sampler.capture_buffer, &sampler.pio->rxf[sampler.sm], SAMPLE_COUNT/8, true);
         dma_channel_configure(sampler.second_dma_channel, &c2,  &sampler.capture_buffer[SAMPLE_COUNT/2], 
                               &sampler.pio->rxf[sampler.sm], SAMPLE_COUNT/8, false);
+        pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
+        pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
     }
     else
     {
@@ -304,18 +287,11 @@ void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
         channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
         channel_config_set_dreq(&c, pio_get_dreq(sampler.pio, sampler.sm, false));
         dma_channel_configure(sampler.dma_channel, &c,  sampler.capture_buffer, &sampler.pio->rxf[sampler.sm], SAMPLE_COUNT/4, true);
-    }
-
-    if(force_trigger)
-    {
         dma_channel_set_irq0_enabled(sampler.dma_channel, true);
         irq_set_exclusive_handler(DMA_IRQ_0, dma_complete_handler);
         irq_set_enabled(DMA_IRQ_0, true);
     }
-    
     pio_sm_set_enabled(sampler.pio, sampler.sm, true);
-    if(!force_trigger) pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
-    if(!force_trigger) pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
 }
 
 uint16_t get_dma_last_index(Sampler normal_sampler)
