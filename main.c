@@ -91,6 +91,7 @@ int main(void)
                         trigger_vector_available = 0;
                         force_trigger = 1;
                         trigger(&force_sampler, &normal_sampler, force_trigger);
+                        dma_hw->ints0 = 1 << force_sampler.dma_channel;
                         break;
                     }
                 case TRIGGER_LEVEL_COMMAND:
