@@ -40,12 +40,14 @@ static uint8_t aligned_memory[SAMPLE_COUNT] __attribute__((aligned(SAMPLE_COUNT)
 
 uint clk_div;
 uint16_t last_index;
+uint8_t trigger_aborted;
 
 int main(void)
 {
     stdio_init_all();
     tusb_init();
     uint8_t peripherals_initialized = 0;
+    trigger_aborted = 0;
 
     while(1)
     {
@@ -57,7 +59,6 @@ int main(void)
                 peripherals_initialized = 1;
             }
             
-
             char command = (char)getchar_timeout_us(CHARACTER_TIMEOUT);
             switch(command)
             {
@@ -122,7 +123,7 @@ int main(void)
                     break;
             }
 
-            if(trigger_vector_available)
+            if(trigger_vector_available && !trigger_aborted)
             {
                 if(force_trigger)
                 {
@@ -298,6 +299,7 @@ void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
     {
         pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
         pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
+        trigger_aborted = 0;
     }
 }
 
@@ -315,6 +317,7 @@ void update_clock(Sampler force_sampler, Sampler normal_sampler)
     if(normal_sampler.created)
     {
         stop_trigger();
+        trigger_aborted = 1;
     }
     char code_string[MAX_STRING_LENGTH];
     get_string(code_string);
@@ -332,12 +335,14 @@ void update_clock(Sampler force_sampler, Sampler normal_sampler)
 
 void trigger(Sampler* force_sampler, Sampler* normal_sampler, uint8_t forced)
 {
+    if(normal_sampler->created)
+    {
+        stop_trigger();
+        trigger_aborted = 1;
+    }
     if(forced)
     {
-        if(normal_sampler->created)
-        {
-            stop_trigger();
-        }
+        
         force_sampler->capture_buffer = malloc(SAMPLE_COUNT*sizeof(uint8_t));
         if(!force_sampler->created)
         {
