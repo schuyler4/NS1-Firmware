@@ -15,7 +15,6 @@
 #define PS_NOISE_SET_PIN 23
 #define RANGE_PIN 27 
 #define GAIN_PIN 28
-
 #define TRIGGER_PIN 8
 
 #define SIMU_WAVEFORM_POINTS 50
@@ -26,6 +25,7 @@
 #define SPI_TX 11
 #define CS_PIN 13
 #define CAL_PIN 14
+#define TRIGGER_ENABLE_PIN 12
 
 #define MAX_STRING_LENGTH 100
 
@@ -72,7 +72,11 @@ void transmit_vector(uint16_t* vector, uint16_t point_count);
 void get_string(char* str);
 void setup_cal_pin(void);
 void run_trigger(void);
-void reset_triggers(void);
 void initialize_peripherals(void);
+void set_cal_command(void);
+void read_cal_command(void);
+void stop_capture(void);
+bool record_callback(struct repeating_timer *t);
+void stop_trigger(void);
 
 #endif

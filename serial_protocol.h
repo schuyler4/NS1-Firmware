@@ -6,7 +6,8 @@
 
 #define SPECS_COMMAND 's'
 #define TRIGGER_COMMAND 't'
-#define STOP_COMMAND 'S'
+#define ENABLE_SIGNAL_TRIGGER 'I'
+#define DISABLE_SIGNAL_TRIGGER 'i'
 #define FORCE_TRIGGER_COMMAND 'f'
 #define LOW_RANGE_COMMAND 'r'
 #define HIGH_RANGE_COMMAND 'R'
@@ -18,6 +19,7 @@
 #define READ_CAL 'k'
 #define AMPLIFIER_GAIN 'A'
 #define AMPLIFIER_UNITY 'a'
-#define ROLL_SAMPLE 'o'
+#define RECORD_SAMPLE 'o'
+#define START_RECORD 'O'
 
 #endif

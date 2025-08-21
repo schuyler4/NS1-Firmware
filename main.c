@@ -28,8 +28,6 @@
 
 #include "sampler.pio.h"
 
-#define TEST_PIN 15
-
 static uint8_t trigger_flag = 0;
 uint8_t force_trigger = 0;
 
@@ -42,12 +40,14 @@ static uint8_t aligned_memory[SAMPLE_COUNT] __attribute__((aligned(SAMPLE_COUNT)
 
 uint clk_div;
 uint16_t last_index;
+uint8_t trigger_aborted;
 
 int main(void)
 {
     stdio_init_all();
     tusb_init();
     uint8_t peripherals_initialized = 0;
+    trigger_aborted = 0;
 
     while(1)
     {
@@ -58,28 +58,7 @@ int main(void)
                 initialize_peripherals();
                 peripherals_initialized = 1;
             }
-            if(trigger_vector_available)
-            {
-                if(force_trigger)
-                {
-                    write(1, (char*)force_sampler.capture_buffer, SAMPLE_COUNT*sizeof(char));
-                    free(force_sampler.capture_buffer);
-                }
-                else
-                {
-                    flatten_ring_buffer(normal_sampler.capture_buffer, last_index, SAMPLE_COUNT);
-                    write(1, (char*)normal_sampler.capture_buffer, SAMPLE_COUNT*sizeof(char));
-                    normal_sampler.created = 0;
-                }
-                trigger_vector_available = 0;
-            }
-
-            if(trigger_flag && !gpio_get(TRIGGER_PIN))
-            {
-                trigger(&force_sampler, &normal_sampler, force_trigger);
-                trigger_flag = 0;
-            }
-
+            
             char command = (char)getchar_timeout_us(CHARACTER_TIMEOUT);
             switch(command)
             {
@@ -102,15 +81,18 @@ int main(void)
                     normal_sampler.trigger_type = FALLING_EDGE;
                     break;
                 case TRIGGER_COMMAND:
-                    reset_triggers();
-                    force_trigger = 0;
-                    trigger(&force_sampler, &normal_sampler, force_trigger);
-                    break;
+                    {
+                        trigger_vector_available = 0;
+                        force_trigger = 0;
+                        trigger(&force_sampler, &normal_sampler, force_trigger);
+                        break;
+                    }
                 case FORCE_TRIGGER_COMMAND:
                     {
-                        reset_triggers();
+                        trigger_vector_available = 0;
                         force_trigger = 1;
                         trigger(&force_sampler, &normal_sampler, force_trigger);
+                        dma_hw->ints0 = 1 << force_sampler.dma_channel;
                         break;
                     }
                 case TRIGGER_LEVEL_COMMAND:
@@ -131,13 +113,11 @@ int main(void)
                         {
                             pio_sm_set_enabled(force_sampler.pio, force_sampler.sm, false);
                             dma_channel_abort(force_sampler.dma_channel);
-                            dma_channel_hw_addr(force_sampler.dma_channel)->transfer_count = 0;
                         } 
                         else
                         {
                             pio_sm_set_enabled(normal_sampler.pio, normal_sampler.sm, false);
                             dma_channel_abort(normal_sampler.dma_channel);
-                            dma_channel_hw_addr(force_sampler.dma_channel)->transfer_count = 0;
                         }
                         irq_set_enabled(DMA_IRQ_0, false);
                         reset_triggers();
@@ -145,63 +125,35 @@ int main(void)
                         break;
                     }
                 case SET_CAL:
-                    {
-                        char cal_string[MAX_STRING_LENGTH];
-                        get_string(cal_string);
-                        char* high_range_cal_string = malloc(4*sizeof(char));   
-                        char* high_range_gain_cal_string = malloc(4*sizeof(char));
-                        char* low_range_cal_string = malloc(4*sizeof(char));
-                        char* low_range_gain_cal_string = malloc(4*sizeof(char));
-                        memcpy(high_range_cal_string, cal_string, 4*sizeof(char));
-                        memcpy(high_range_gain_cal_string, cal_string+4, 4*sizeof(char));
-                        memcpy(low_range_cal_string, cal_string+8, 4*sizeof(char));
-                        memcpy(low_range_gain_cal_string, cal_string+12, 4*sizeof(char));
-                        uint16_t high_range_cal = atoi(high_range_cal_string);
-                        uint16_t high_range_cal_gain = atoi(high_range_gain_cal_string);
-                        uint16_t low_range_cal = atoi(low_range_cal_string);
-                        uint16_t low_range_cal_gain = atoi(low_range_gain_cal_string);
-                        Calibration_Offsets calibration_offsets; 
-                        calibration_offsets.high_range_offset = high_range_cal;
-                        calibration_offsets.high_range_gain_offset = high_range_cal_gain;
-                        calibration_offsets.low_range_offset = low_range_cal;
-                        calibration_offsets.low_range_gain_offset = low_range_cal_gain;
-                        write_calibration_offsets(calibration_offsets);
-                        free(high_range_cal_string);
-                        free(high_range_gain_cal_string);
-                        free(low_range_cal_string);
-                        free(low_range_gain_cal_string);
-                        break;
-                    }
+                    set_cal_command();
+                    break;
                 case READ_CAL:
-                    {
-                        Calibration_Offsets calibration_offsets = read_calibration_offsets();
-                        uint8_t low_high_range_byte = (uint8_t)(calibration_offsets.high_range_offset & 0xFF);
-                        uint8_t high_high_range_byte = (uint8_t)((calibration_offsets.high_range_offset >> 8) & 0xFF);
-                        uint8_t low_high_range_byte_gain = (uint8_t)(calibration_offsets.high_range_gain_offset & 0xFF);
-                        uint8_t high_high_range_byte_gain = (uint8_t)((calibration_offsets.high_range_gain_offset >> 8) & 0xFF);
-                        uint8_t low_low_range_byte = (uint8_t)(calibration_offsets.low_range_offset & 0xFF);
-                        uint8_t high_low_range_byte = (uint8_t)((calibration_offsets.low_range_offset >> 8) & 0xFF);
-                        uint8_t low_low_range_byte_gain = (uint8_t)(calibration_offsets.low_range_gain_offset & 0xFF);
-                        uint8_t high_low_range_byte_gain = (uint8_t)((calibration_offsets.low_range_gain_offset >> 8) & 0xFF);
-                        write(1, &low_high_range_byte, sizeof(uint8_t));
-                        write(1, &high_high_range_byte, sizeof(uint8_t));
-                        write(1, &low_high_range_byte_gain, sizeof(uint8_t));
-                        write(1, &high_high_range_byte_gain, sizeof(uint8_t));
-                        write(1, &low_low_range_byte, sizeof(uint8_t));
-                        write(1, &high_low_range_byte, sizeof(uint8_t)); 
-                        write(1, &low_low_range_byte_gain, sizeof(uint8_t));
-                        write(1, &high_low_range_byte_gain, sizeof(uint8_t)); 
-                        break;
-                    }
-                case ROLL_SAMPLE:
-                    {
-                        uint8_t point = (uint8_t)(gpio_get_all() & SAMPLE_BIT_MASK);
-                        write(1, &point, sizeof(uint8_t));
-                        break;
-                    }
+                    read_cal_command(); 
+                    break;
+                case ENABLE_SIGNAL_TRIGGER:
+                    gpio_put(TRIGGER_ENABLE_PIN, 1);
+                    break;
+                case DISABLE_SIGNAL_TRIGGER:
+                    gpio_put(TRIGGER_ENABLE_PIN, 0);
+                    break;
                 default:
                     // Do nothing
                     break;
+            }
+
+            if(trigger_vector_available && !trigger_aborted)
+            {
+                if(force_trigger)
+                {
+                    write(1, (char*)force_sampler.capture_buffer, SAMPLE_COUNT*sizeof(char));
+                    free(force_sampler.capture_buffer);
+                }
+                else
+                {
+                    flatten_ring_buffer(normal_sampler.capture_buffer, last_index, SAMPLE_COUNT);
+                    write(1, (char*)normal_sampler.capture_buffer, SAMPLE_COUNT*sizeof(char));
+                }
+                trigger_vector_available = 0;
             }
         }
     }
@@ -236,13 +188,6 @@ void sampler_init(Sampler* sampler, uint8_t sampler_number, PIO pio_module)
     sampler->trigger_type = RISING_EDGE;
 }
 
-void reset_triggers(void)
-{
-    trigger_vector_available = 0;
-    trigger_flag = 0;
-    if(force_trigger) dma_hw->ints0 = 1 << force_sampler.dma_channel;
-}
-
 void get_string(char* str)
 {
     uint8_t i;
@@ -260,6 +205,7 @@ void setup_IO(void)
     gpio_init(CS_PIN);
     gpio_init(TRIGGER_PIN);
     gpio_init(GAIN_PIN);
+    gpio_init(TRIGGER_ENABLE_PIN);
 
     uint8_t i;
     for(i = 0; i < SAMPLE_BIT_COUNT; i++)
@@ -273,11 +219,13 @@ void setup_IO(void)
     gpio_set_dir(GAIN_PIN, GPIO_OUT);
     gpio_set_dir(CS_PIN, GPIO_OUT);
     gpio_set_dir(TRIGGER_PIN, GPIO_IN);
+    gpio_set_dir(TRIGGER_ENABLE_PIN, GPIO_OUT);
 
     gpio_put(PS_NOISE_SET_PIN, 1); 
     gpio_put(RANGE_PIN, 0);
     gpio_put(GAIN_PIN, 0);
     gpio_put(CS_PIN, 1);
+    gpio_put(TRIGGER_ENABLE_PIN, 1);
 
     gpio_set_function(CAL_PIN, GPIO_FUNC_PWM);
 }
@@ -286,7 +234,6 @@ void setup_SPI(void)
 {
     spi_init(spi1, SPI_SCK_FREQUENCY);
     gpio_set_function(SPI_SCK, GPIO_FUNC_SPI);
-    gpio_set_function(SPI_RX, GPIO_FUNC_SPI);
     gpio_set_function(SPI_TX, GPIO_FUNC_SPI);
 }
 
@@ -309,21 +256,26 @@ void dma_complete_handler(void)
     }
     else
     {
-        pio_interrupt_clear(normal_sampler.pio, 0);
-        last_index = get_dma_last_index(normal_sampler);
-        dma_channel_abort(normal_sampler.dma_channel);
-        dma_channel_abort(normal_sampler.second_dma_channel);
-        irq_set_enabled(pio_get_dreq(normal_sampler.pio, normal_sampler.sm, false), false);
-        pio_sm_set_enabled(normal_sampler.pio, normal_sampler.sm, false);
-        if(normal_sampler.trigger_type == RISING_EDGE)
-            pio_remove_program(normal_sampler.pio, &normal_trigger_positive_program, normal_sampler.offset);
-        else if(normal_sampler.trigger_type == FALLING_EDGE)
-            pio_remove_program(normal_sampler.pio, &normal_trigger_negative_program, normal_sampler.offset);
-        irq_set_enabled(PIO0_IRQ_0, false);
-        irq_remove_handler(PIO0_IRQ_0, dma_complete_handler);
-        normal_sampler.created = 0;
+        stop_trigger();
     }
     trigger_vector_available = 1; 
+}
+
+void stop_trigger(void)
+{
+    pio_interrupt_clear(normal_sampler.pio, 0);
+    last_index = get_dma_last_index(normal_sampler);
+    dma_channel_abort(normal_sampler.dma_channel);
+    dma_channel_abort(normal_sampler.second_dma_channel);
+    irq_set_enabled(pio_get_dreq(normal_sampler.pio, normal_sampler.sm, false), false);
+    pio_sm_set_enabled(normal_sampler.pio, normal_sampler.sm, false);
+    if(normal_sampler.trigger_type == RISING_EDGE)
+        pio_remove_program(normal_sampler.pio, &normal_trigger_positive_program, normal_sampler.offset);
+    else if(normal_sampler.trigger_type == FALLING_EDGE)
+        pio_remove_program(normal_sampler.pio, &normal_trigger_negative_program, normal_sampler.offset);
+    irq_set_enabled(PIO0_IRQ_0, false);
+    irq_remove_handler(PIO0_IRQ_0, dma_complete_handler);
+    normal_sampler.created = 0;
 }
 
 void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
@@ -356,24 +308,23 @@ void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
         channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
         channel_config_set_dreq(&c, pio_get_dreq(sampler.pio, sampler.sm, false));
         dma_channel_configure(sampler.dma_channel, &c,  sampler.capture_buffer, &sampler.pio->rxf[sampler.sm], SAMPLE_COUNT/4, true);
-    }
-
-    if(force_trigger)
-    {
         dma_channel_set_irq0_enabled(sampler.dma_channel, true);
         irq_set_exclusive_handler(DMA_IRQ_0, dma_complete_handler);
         irq_set_enabled(DMA_IRQ_0, true);
     }
-    
     pio_sm_set_enabled(sampler.pio, sampler.sm, true);
-    if(!force_trigger) pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
-    if(!force_trigger) pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
+    if(!force_trigger)
+    {
+        pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
+        pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
+        trigger_aborted = 0;
+    }
 }
 
 uint16_t get_dma_last_index(Sampler normal_sampler)
 {
-    if(dma_channel_is_busy(force_sampler.dma_channel)) 
-        return SAMPLE_COUNT - (dma_channel_hw_addr(force_sampler.dma_channel)->transfer_count*4) - 1;
+    if(dma_channel_is_busy(1)) 
+        return SAMPLE_COUNT - (dma_channel_hw_addr(1)->transfer_count*4) - 1;
     if(dma_channel_is_busy(normal_sampler.dma_channel))
         return SAMPLE_COUNT - (dma_channel_hw_addr(normal_sampler.dma_channel)->transfer_count*4) - (SAMPLE_COUNT/2) - 1;
     return 0;
@@ -381,6 +332,11 @@ uint16_t get_dma_last_index(Sampler normal_sampler)
 
 void update_clock(Sampler force_sampler, Sampler normal_sampler)
 {
+    if(normal_sampler.created)
+    {
+        stop_trigger();
+        trigger_aborted = 1;
+    }
     char code_string[MAX_STRING_LENGTH];
     get_string(code_string);
     uint16_t commanded_clock_div = atoi(code_string);   
@@ -397,20 +353,20 @@ void update_clock(Sampler force_sampler, Sampler normal_sampler)
 
 void trigger(Sampler* force_sampler, Sampler* normal_sampler, uint8_t forced)
 {
+    if(normal_sampler->created)
+    {
+        stop_trigger();
+        trigger_aborted = 1;
+    }
     if(forced)
     {
-        if(normal_sampler->created)
-        {
-            pio_sm_set_enabled(normal_sampler->pio, normal_sampler->sm, false);
-            if(normal_sampler->trigger_type == RISING_EDGE)
-                pio_remove_program(normal_sampler->pio, &normal_trigger_positive_program, normal_sampler->offset);
-            else if(normal_sampler->trigger_type == FALLING_EDGE)
-                pio_remove_program(normal_sampler->pio, &normal_trigger_negative_program, normal_sampler->offset);
-            normal_sampler->created = 0;
-        }
+        
         force_sampler->capture_buffer = malloc(SAMPLE_COUNT*sizeof(uint8_t));
         if(!force_sampler->created)
         {
+            uint8_t pin;
+            for(pin = 0; pin < SAMPLE_BIT_COUNT; pin++)
+                pio_sm_set_consecutive_pindirs(force_sampler->pio, normal_sampler->sm, pin, 1, false);
             pio_sm_set_enabled(force_sampler->pio, force_sampler->sm, false);
             pio_sm_clear_fifos(force_sampler->pio, force_sampler->sm);
             pio_sm_restart(force_sampler->pio, force_sampler->sm);
@@ -451,4 +407,53 @@ void trigger(Sampler* force_sampler, Sampler* normal_sampler, uint8_t forced)
         }
         arm_sampler(*normal_sampler, PIN_BASE, forced);
     }
+}
+
+void set_cal_command(void)
+{
+    char cal_string[MAX_STRING_LENGTH];
+    get_string(cal_string);
+    char* high_range_cal_string = malloc(4*sizeof(char));   
+    char* high_range_gain_cal_string = malloc(4*sizeof(char));
+    char* low_range_cal_string = malloc(4*sizeof(char));
+    char* low_range_gain_cal_string = malloc(4*sizeof(char));
+    memcpy(high_range_cal_string, cal_string, 4*sizeof(char));
+    memcpy(high_range_gain_cal_string, cal_string+4, 4*sizeof(char));
+    memcpy(low_range_cal_string, cal_string+8, 4*sizeof(char));
+    memcpy(low_range_gain_cal_string, cal_string+12, 4*sizeof(char));
+    uint16_t high_range_cal = atoi(high_range_cal_string);
+    uint16_t high_range_cal_gain = atoi(high_range_gain_cal_string);
+    uint16_t low_range_cal = atoi(low_range_cal_string);
+    uint16_t low_range_cal_gain = atoi(low_range_gain_cal_string);
+    Calibration_Offsets calibration_offsets; 
+    calibration_offsets.high_range_offset = high_range_cal;
+    calibration_offsets.high_range_gain_offset = high_range_cal_gain;
+    calibration_offsets.low_range_offset = low_range_cal;
+    calibration_offsets.low_range_gain_offset = low_range_cal_gain;
+    write_calibration_offsets(calibration_offsets);
+    free(high_range_cal_string);
+    free(high_range_gain_cal_string);
+    free(low_range_cal_string);
+    free(low_range_gain_cal_string);
+}
+
+void read_cal_command(void)
+{
+    Calibration_Offsets calibration_offsets = read_calibration_offsets();
+    uint8_t low_high_range_byte = (uint8_t)(calibration_offsets.high_range_offset & 0xFF);
+    uint8_t high_high_range_byte = (uint8_t)((calibration_offsets.high_range_offset >> 8) & 0xFF);
+    uint8_t low_high_range_byte_gain = (uint8_t)(calibration_offsets.high_range_gain_offset & 0xFF);
+    uint8_t high_high_range_byte_gain = (uint8_t)((calibration_offsets.high_range_gain_offset >> 8) & 0xFF);
+    uint8_t low_low_range_byte = (uint8_t)(calibration_offsets.low_range_offset & 0xFF);
+    uint8_t high_low_range_byte = (uint8_t)((calibration_offsets.low_range_offset >> 8) & 0xFF);
+    uint8_t low_low_range_byte_gain = (uint8_t)(calibration_offsets.low_range_gain_offset & 0xFF);
+    uint8_t high_low_range_byte_gain = (uint8_t)((calibration_offsets.low_range_gain_offset >> 8) & 0xFF);
+    write(1, &low_high_range_byte, sizeof(uint8_t));
+    write(1, &high_high_range_byte, sizeof(uint8_t));
+    write(1, &low_high_range_byte_gain, sizeof(uint8_t));
+    write(1, &high_high_range_byte_gain, sizeof(uint8_t));
+    write(1, &low_low_range_byte, sizeof(uint8_t));
+    write(1, &high_low_range_byte, sizeof(uint8_t)); 
+    write(1, &low_low_range_byte_gain, sizeof(uint8_t));
+    write(1, &high_low_range_byte_gain, sizeof(uint8_t)); 
 }
