@@ -299,8 +299,8 @@ void arm_sampler(Sampler sampler, uint trigger_pin, uint8_t force_trigger)
     {
         pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
         pio_sm_put_blocking(sampler.pio, sampler.sm, (SAMPLE_COUNT/2)-1);
-        trigger_aborted = 0;
     }
+    trigger_aborted = 0;
 }
 
 uint16_t get_dma_last_index(Sampler normal_sampler)
