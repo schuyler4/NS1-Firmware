@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "pico/stdlib.h"
+#include "pico/time.h"
 #include "pico/unique_id.h"
 
 #include "hardware/pio.h"
@@ -41,6 +42,9 @@ static uint8_t aligned_memory[SAMPLE_COUNT] __attribute__((aligned(SAMPLE_COUNT)
 uint clk_div;
 uint16_t last_index;
 uint8_t trigger_aborted;
+
+struct repeating_timer roll_timer;
+uint16_t roll_index;
 
 int main(void)
 {
@@ -117,6 +121,20 @@ int main(void)
                     break;
                 case DISABLE_SIGNAL_TRIGGER:
                     gpio_put(TRIGGER_ENABLE_PIN, 0);
+                    break;
+                case START_ROLL:
+                    roll_index = 0;
+                    add_repeating_timer_ms(-1, roll_timer_callback, NULL, &roll_timer);
+                    break;
+                case ROLL_SAMPLES:
+                    {
+                        uint8_t captured_data[roll_index];
+                        memcpy(captured_data, aligned_memory, roll_index);
+                        write(1, (char*)captured_data, roll_index*sizeof(char));
+                        break;
+                    }
+                case END_ROLL:
+                    cancel_repeating_timer(&roll_timer);
                     break;
                 default:
                     // Do nothing
@@ -389,6 +407,12 @@ void trigger(Sampler* force_sampler, Sampler* normal_sampler, uint8_t forced)
         }
         arm_sampler(*normal_sampler, PIN_BASE, forced);
     }
+}
+
+bool roll_timer_callback(struct repeating_timer *t)
+{
+    aligned_memory[roll_index] = (uint8_t)(sio_hw->gpio_in & 0xFF);
+    roll_index++;
 }
 
 void set_cal_command(void)

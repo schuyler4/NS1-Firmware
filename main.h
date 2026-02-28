@@ -37,6 +37,7 @@
 #include <stdint.h>
 
 #include "pico/stdlib.h"
+#include "pico/time.h"
 #include "hardware/pio.h"
 
 typedef enum
@@ -78,5 +79,6 @@ void read_cal_command(void);
 void stop_capture(void);
 bool record_callback(struct repeating_timer *t);
 void stop_trigger(void);
+bool roll_timer_callback(struct repeating_timer *t);
 
 #endif

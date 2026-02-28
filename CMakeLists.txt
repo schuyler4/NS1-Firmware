@@ -17,6 +17,7 @@ pico_enable_stdio_uart(${PROJECT_NAME} 0)
 pico_generate_pio_header(${PROJECT_NAME} ../sampler.pio)
 
 target_link_libraries(${PROJECT_NAME} pico_stdlib)
+target_link_libraries(${PROJECT_NAME} pico_time)
 target_link_libraries(${PROJECT_NAME} hardware_pio)
 target_link_libraries(${PROJECT_NAME} hardware_clocks)
 target_link_libraries(${PROJECT_NAME} hardware_dma)
